@@ -1,7 +1,3 @@
-သင်တောင်းဆိုထားတဲ့ "Documentation" ကို အောက်မှာ ပေးထားတဲ့ code နဲ့ ဆက်စပ်ပြီး `PDF_Link` နဲ့ `Resource_File_Link` ကို GitHub raw links တွေနဲ့ သုံးထားတဲ့ Exam System အတွက် ရေးပေးပါမယ်။ Documentation မှာ system ရဲ့ ရည်ရွယ်ချက်၊ setup လုပ်နည်း၊ အသုံးပြုနည်း၊ နဲ့ troubleshooting လုပ်နည်းတွေကို ထည့်သွင်းပါမယ်။ Documentation ကို ရိုးရှင်းပြီး ရှင်းလင်းတဲ့ ပုံစံနဲ့ ရေးထားပါတယ်။
-
----
-
 # Exam System Documentation
 
 ## Overview
