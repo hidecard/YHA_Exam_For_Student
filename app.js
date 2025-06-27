@@ -4,10 +4,8 @@ let totalQuestions = 0;
 let examStartTime = null;
 let currentTheme = "light";
 let examTimer = null;
-let timeRemaining = 1800; // 30 minutes in seconds
+let timeRemaining = 3600; // 1 hour in seconds
 let isOnline = navigator.onLine;
-let autoSaveTimer = null;
-let currentAnswers = {};
 const API_URL =
   "https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec";
 
@@ -17,8 +15,6 @@ document.addEventListener("DOMContentLoaded", function () {
   hideLoading();
   setupInputValidation();
   setupOfflineMode();
-  setupAutoSave();
-  loadSavedAnswers();
 
   // Register service worker for offline support
   if ("serviceWorker" in navigator) {
@@ -106,8 +102,8 @@ async function startExam() {
   examStartTime = new Date();
   currentQuestionIndex = 0;
 
-  // Initialize timer (30 minutes default)
-  timeRemaining = 1800;
+  // Initialize timer (1 hour default)
+  timeRemaining = 3600;
   startTimer();
 
   try {
@@ -158,11 +154,11 @@ function updateTimerDisplay() {
   // Change timer color based on remaining time
   if (timerDisplay) {
     timerDisplay.className = "timer-display";
-    if (timeRemaining <= 300) {
-      // 5 minutes
-      timerDisplay.classList.add("danger");
-    } else if (timeRemaining <= 600) {
+    if (timeRemaining <= 600) {
       // 10 minutes
+      timerDisplay.classList.add("danger");
+    } else if (timeRemaining <= 1200) {
+      // 20 minutes
       timerDisplay.classList.add("warning");
     }
   }
@@ -171,13 +167,15 @@ function updateTimerDisplay() {
 function updateTimerBar() {
   const timerBar = document.getElementById("timerBar");
   if (timerBar) {
-    const percentage = (timeRemaining / 1800) * 100;
+    const percentage = (timeRemaining / 3600) * 100;
     timerBar.style.width = `${percentage}%`;
 
     timerBar.className = "timer-bar";
-    if (timeRemaining <= 300) {
+    if (timeRemaining <= 600) {
+      // 10 minutes
       timerBar.classList.add("danger");
-    } else if (timeRemaining <= 600) {
+    } else if (timeRemaining <= 1200) {
+      // 20 minutes
       timerBar.classList.add("warning");
     }
   }
@@ -195,7 +193,6 @@ function setupOfflineMode() {
     isOnline = true;
     updateConnectionStatus();
     hideOfflineBanner();
-    syncAnswers();
   });
 
   window.addEventListener("offline", () => {
@@ -237,110 +234,13 @@ function hideOfflineBanner() {
 
 function syncWhenOnline() {
   if (isOnline) {
-    syncAnswers();
-    showNotification("Syncing answers...", "info");
+    showNotification("Connection restored!", "success");
   } else {
     showNotification("Still offline. Please check your connection.", "warning");
   }
 }
 
-// Auto-save functions
-function setupAutoSave() {
-  const answerInput = document.getElementById("answerInput");
-  if (answerInput) {
-    answerInput.addEventListener("input", debounce(autoSaveAnswer, 1000));
-    answerInput.addEventListener("input", updateWordCount);
-  }
-}
-
-function autoSaveAnswer() {
-  const answerInput = document.getElementById("answerInput");
-  if (answerInput && currentExamId) {
-    const answer = answerInput.value.trim();
-    currentAnswers[currentQuestionIndex] = answer;
-
-    // Save to localStorage
-    saveAnswersToLocal();
-
-    // Show auto-save indicator
-    showAutoSaveIndicator();
-
-    // Try to sync if online
-    if (isOnline) {
-      syncAnswers();
-    }
-  }
-}
-
-function saveAnswersToLocal() {
-  const examData = {
-    examId: currentExamId,
-    answers: currentAnswers,
-    currentQuestionIndex: currentQuestionIndex,
-    timeRemaining: timeRemaining,
-    timestamp: new Date().toISOString(),
-  };
-
-  localStorage.setItem(`exam_${currentExamId}`, JSON.stringify(examData));
-}
-
-function loadSavedAnswers() {
-  const savedData = localStorage.getItem(`exam_${currentExamId}`);
-  if (savedData) {
-    try {
-      const examData = JSON.parse(savedData);
-      currentAnswers = examData.answers || {};
-      // Could restore timeRemaining and currentQuestionIndex if needed
-    } catch (error) {
-      console.error("Error loading saved answers:", error);
-    }
-  }
-}
-
-function showAutoSaveIndicator() {
-  const indicator = document.getElementById("autoSaveStatus");
-  if (indicator) {
-    indicator.className = "auto-save-indicator saving show";
-    indicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-
-    setTimeout(() => {
-      indicator.className = "auto-save-indicator show";
-      indicator.innerHTML = '<i class="fas fa-save"></i> Auto-saved';
-
-      setTimeout(() => {
-        indicator.classList.remove("show");
-      }, 2000);
-    }, 500);
-  }
-}
-
-function updateWordCount() {
-  const answerInput = document.getElementById("answerInput");
-  const wordCountElement = document.getElementById("wordCount");
-
-  if (answerInput && wordCountElement) {
-    const words = answerInput.value
-      .trim()
-      .split(/\s+/)
-      .filter((word) => word.length > 0);
-    wordCountElement.textContent = `${words.length} words`;
-  }
-}
-
-async function syncAnswers() {
-  if (!isOnline || !currentExamId) return;
-
-  try {
-    // Here you would implement the actual sync with your backend
-    // For now, we'll just simulate it
-    console.log("Syncing answers:", currentAnswers);
-
-    // Remove from localStorage after successful sync
-    // localStorage.removeItem(`exam_${currentExamId}`);
-  } catch (error) {
-    console.error("Sync failed:", error);
-  }
-}
+// Removed auto-save functions since using Google Sheets
 
 // Utility function for debouncing
 function debounce(func, wait) {
@@ -393,16 +293,6 @@ async function loadQuestion() {
       <h3>Question ${currentQuestionIndex + 1}</h3>
       <p>${data.question}</p>
     `;
-
-    // Restore saved answer for this question
-    const answerInput = document.getElementById("answerInput");
-    if (answerInput && currentAnswers[currentQuestionIndex]) {
-      answerInput.value = currentAnswers[currentQuestionIndex];
-      updateWordCount();
-    } else if (answerInput) {
-      answerInput.value = "";
-      updateWordCount();
-    }
 
     // Handle PDF loading
     await loadPDF(data.pdf_link);
@@ -519,23 +409,17 @@ function updateProgress() {
 
 function nextQuestion() {
   if (currentQuestionIndex < totalQuestions - 1) {
-    // Save current answer before moving
-    autoSaveAnswer();
     currentQuestionIndex++;
     loadQuestion();
     scrollToTop();
-    setupAutoSave(); // Re-setup auto-save for new question
   }
 }
 
 function prevQuestion() {
   if (currentQuestionIndex > 0) {
-    // Save current answer before moving
-    autoSaveAnswer();
     currentQuestionIndex--;
     loadQuestion();
     scrollToTop();
-    setupAutoSave(); // Re-setup auto-save for new question
   }
 }
 
