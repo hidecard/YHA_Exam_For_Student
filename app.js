@@ -3,6 +3,11 @@ let currentQuestionIndex = 0;
 let totalQuestions = 0;
 let examStartTime = null;
 let currentTheme = "light";
+let examTimer = null;
+let timeRemaining = 1800; // 30 minutes in seconds
+let isOnline = navigator.onLine;
+let autoSaveTimer = null;
+let currentAnswers = {};
 const API_URL =
   "https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec";
 
@@ -11,6 +16,14 @@ document.addEventListener("DOMContentLoaded", function () {
   initializeTheme();
   hideLoading();
   setupInputValidation();
+  setupOfflineMode();
+  setupAutoSave();
+  loadSavedAnswers();
+
+  // Register service worker for offline support
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(console.error);
+  }
 });
 
 // Theme functions
@@ -93,6 +106,10 @@ async function startExam() {
   examStartTime = new Date();
   currentQuestionIndex = 0;
 
+  // Initialize timer (30 minutes default)
+  timeRemaining = 1800;
+  startTimer();
+
   try {
     await loadQuestion();
     showExamSection();
@@ -100,9 +117,242 @@ async function startExam() {
     showNotification("Exam started successfully!", "success");
   } catch (error) {
     hideLoading();
-    showNotification("Failed to start exam. Please try again.", "error");
+    if (!isOnline) {
+      showNotification("Starting in offline mode", "warning");
+      showExamSection();
+    } else {
+      showNotification("Failed to start exam. Please try again.", "error");
+    }
     console.error("Start exam error:", error);
   }
+}
+
+// Timer functions
+function startTimer() {
+  if (examTimer) clearInterval(examTimer);
+
+  examTimer = setInterval(() => {
+    timeRemaining--;
+    updateTimerDisplay();
+    updateTimerBar();
+
+    if (timeRemaining <= 0) {
+      clearInterval(examTimer);
+      autoSubmitExam();
+    }
+  }, 1000);
+}
+
+function updateTimerDisplay() {
+  const minutes = Math.floor(timeRemaining / 60);
+  const seconds = timeRemaining % 60;
+  const timerText = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
+  const timerElement = document.getElementById("timerText");
+  const timerDisplay = document.getElementById("examTimer");
+
+  if (timerElement) {
+    timerElement.textContent = timerText;
+  }
+
+  // Change timer color based on remaining time
+  if (timerDisplay) {
+    timerDisplay.className = "timer-display";
+    if (timeRemaining <= 300) {
+      // 5 minutes
+      timerDisplay.classList.add("danger");
+    } else if (timeRemaining <= 600) {
+      // 10 minutes
+      timerDisplay.classList.add("warning");
+    }
+  }
+}
+
+function updateTimerBar() {
+  const timerBar = document.getElementById("timerBar");
+  if (timerBar) {
+    const percentage = (timeRemaining / 1800) * 100;
+    timerBar.style.width = `${percentage}%`;
+
+    timerBar.className = "timer-bar";
+    if (timeRemaining <= 300) {
+      timerBar.classList.add("danger");
+    } else if (timeRemaining <= 600) {
+      timerBar.classList.add("warning");
+    }
+  }
+}
+
+function autoSubmitExam() {
+  showNotification("Time is up! Exam submitted automatically.", "warning");
+  finishExam();
+}
+
+// Offline Mode functions
+function setupOfflineMode() {
+  // Listen for online/offline events
+  window.addEventListener("online", () => {
+    isOnline = true;
+    updateConnectionStatus();
+    hideOfflineBanner();
+    syncAnswers();
+  });
+
+  window.addEventListener("offline", () => {
+    isOnline = false;
+    updateConnectionStatus();
+    showOfflineBanner();
+  });
+
+  updateConnectionStatus();
+}
+
+function updateConnectionStatus() {
+  const statusElement = document.getElementById("connectionStatus");
+  const iconElement = document.getElementById("connectionIcon");
+  const textElement = document.getElementById("connectionText");
+
+  if (statusElement && iconElement && textElement) {
+    if (isOnline) {
+      statusElement.className = "connection-status online";
+      iconElement.className = "fas fa-wifi";
+      textElement.textContent = "Online";
+    } else {
+      statusElement.className = "connection-status offline";
+      iconElement.className = "fas fa-wifi-slash";
+      textElement.textContent = "Offline";
+    }
+  }
+}
+
+function showOfflineBanner() {
+  document.getElementById("offlineBanner").style.display = "block";
+  document.body.style.paddingTop = "60px";
+}
+
+function hideOfflineBanner() {
+  document.getElementById("offlineBanner").style.display = "none";
+  document.body.style.paddingTop = "0";
+}
+
+function syncWhenOnline() {
+  if (isOnline) {
+    syncAnswers();
+    showNotification("Syncing answers...", "info");
+  } else {
+    showNotification("Still offline. Please check your connection.", "warning");
+  }
+}
+
+// Auto-save functions
+function setupAutoSave() {
+  const answerInput = document.getElementById("answerInput");
+  if (answerInput) {
+    answerInput.addEventListener("input", debounce(autoSaveAnswer, 1000));
+    answerInput.addEventListener("input", updateWordCount);
+  }
+}
+
+function autoSaveAnswer() {
+  const answerInput = document.getElementById("answerInput");
+  if (answerInput && currentExamId) {
+    const answer = answerInput.value.trim();
+    currentAnswers[currentQuestionIndex] = answer;
+
+    // Save to localStorage
+    saveAnswersToLocal();
+
+    // Show auto-save indicator
+    showAutoSaveIndicator();
+
+    // Try to sync if online
+    if (isOnline) {
+      syncAnswers();
+    }
+  }
+}
+
+function saveAnswersToLocal() {
+  const examData = {
+    examId: currentExamId,
+    answers: currentAnswers,
+    currentQuestionIndex: currentQuestionIndex,
+    timeRemaining: timeRemaining,
+    timestamp: new Date().toISOString(),
+  };
+
+  localStorage.setItem(`exam_${currentExamId}`, JSON.stringify(examData));
+}
+
+function loadSavedAnswers() {
+  const savedData = localStorage.getItem(`exam_${currentExamId}`);
+  if (savedData) {
+    try {
+      const examData = JSON.parse(savedData);
+      currentAnswers = examData.answers || {};
+      // Could restore timeRemaining and currentQuestionIndex if needed
+    } catch (error) {
+      console.error("Error loading saved answers:", error);
+    }
+  }
+}
+
+function showAutoSaveIndicator() {
+  const indicator = document.getElementById("autoSaveStatus");
+  if (indicator) {
+    indicator.className = "auto-save-indicator saving show";
+    indicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+    setTimeout(() => {
+      indicator.className = "auto-save-indicator show";
+      indicator.innerHTML = '<i class="fas fa-save"></i> Auto-saved';
+
+      setTimeout(() => {
+        indicator.classList.remove("show");
+      }, 2000);
+    }, 500);
+  }
+}
+
+function updateWordCount() {
+  const answerInput = document.getElementById("answerInput");
+  const wordCountElement = document.getElementById("wordCount");
+
+  if (answerInput && wordCountElement) {
+    const words = answerInput.value
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0);
+    wordCountElement.textContent = `${words.length} words`;
+  }
+}
+
+async function syncAnswers() {
+  if (!isOnline || !currentExamId) return;
+
+  try {
+    // Here you would implement the actual sync with your backend
+    // For now, we'll just simulate it
+    console.log("Syncing answers:", currentAnswers);
+
+    // Remove from localStorage after successful sync
+    // localStorage.removeItem(`exam_${currentExamId}`);
+  } catch (error) {
+    console.error("Sync failed:", error);
+  }
+}
+
+// Utility function for debouncing
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
 }
 
 // Show exam section
@@ -143,6 +393,16 @@ async function loadQuestion() {
       <h3>Question ${currentQuestionIndex + 1}</h3>
       <p>${data.question}</p>
     `;
+
+    // Restore saved answer for this question
+    const answerInput = document.getElementById("answerInput");
+    if (answerInput && currentAnswers[currentQuestionIndex]) {
+      answerInput.value = currentAnswers[currentQuestionIndex];
+      updateWordCount();
+    } else if (answerInput) {
+      answerInput.value = "";
+      updateWordCount();
+    }
 
     // Handle PDF loading
     await loadPDF(data.pdf_link);
@@ -255,20 +515,27 @@ function updateProgress() {
   progressFill.style.width = `${progressPercentage}%`;
 }
 
-// Navigation functions
-function prevQuestion() {
-  if (currentQuestionIndex > 0) {
-    currentQuestionIndex--;
-    loadQuestion();
-    scrollToTop();
-  }
-}
+// Navigation functions are now included above
 
 function nextQuestion() {
   if (currentQuestionIndex < totalQuestions - 1) {
+    // Save current answer before moving
+    autoSaveAnswer();
     currentQuestionIndex++;
     loadQuestion();
     scrollToTop();
+    setupAutoSave(); // Re-setup auto-save for new question
+  }
+}
+
+function prevQuestion() {
+  if (currentQuestionIndex > 0) {
+    // Save current answer before moving
+    autoSaveAnswer();
+    currentQuestionIndex--;
+    loadQuestion();
+    scrollToTop();
+    setupAutoSave(); // Re-setup auto-save for new question
   }
 }
 
