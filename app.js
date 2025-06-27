@@ -6,8 +6,12 @@ let currentTheme = "light";
 let examTimer = null;
 let timeRemaining = 3600; // 1 hour in seconds
 let isOnline = navigator.onLine;
+let isExamActive = false;
+let tabSwitchCount = 0;
+let lastVisibilityChange = Date.now();
 const API_URL =
   "https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec";
+("https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec");
 
 // Initialize app
 document.addEventListener("DOMContentLoaded", function () {
@@ -15,6 +19,7 @@ document.addEventListener("DOMContentLoaded", function () {
   hideLoading();
   setupInputValidation();
   setupOfflineMode();
+  setupTabSwitchingDetection();
 
   // Register service worker for offline support
   if ("serviceWorker" in navigator) {
@@ -109,13 +114,18 @@ async function startExam() {
   try {
     await loadQuestion();
     showExamSection();
+    isExamActive = true; // Enable tab switching detection
     hideLoading();
-    showNotification("Exam started successfully!", "success");
+    showNotification(
+      "Exam started successfully! Tab switching is being monitored.",
+      "success",
+    );
   } catch (error) {
     hideLoading();
     if (!isOnline) {
       showNotification("Starting in offline mode", "warning");
       showExamSection();
+      isExamActive = true;
     } else {
       showNotification("Failed to start exam. Please try again.", "error");
     }
@@ -240,7 +250,279 @@ function syncWhenOnline() {
   }
 }
 
-// Removed auto-save functions since using Google Sheets
+// Tab Switching Detection
+function setupTabSwitchingDetection() {
+  // Listen for visibility change events
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  // Listen for focus/blur events
+  window.addEventListener("blur", handleWindowBlur);
+  window.addEventListener("focus", handleWindowFocus);
+
+  // Listen for beforeunload (tab closing/refreshing)
+  window.addEventListener("beforeunload", handleBeforeUnload);
+}
+
+function handleVisibilityChange() {
+  if (!isExamActive) return;
+
+  const now = Date.now();
+  const timeDiff = now - lastVisibilityChange;
+
+  // Ignore rapid visibility changes (less than 1 second)
+  if (timeDiff < 1000) return;
+
+  if (document.hidden) {
+    // Tab became hidden
+    showTabSwitchWarning("tab_hidden");
+    logTabSwitch("Tab hidden/switched");
+  } else {
+    // Tab became visible again
+    showTabSwitchWarning("tab_visible");
+    logTabSwitch("Tab visible/returned");
+  }
+
+  lastVisibilityChange = now;
+}
+
+function handleWindowBlur() {
+  if (!isExamActive) return;
+  showTabSwitchWarning("window_blur");
+  logTabSwitch("Window lost focus");
+}
+
+function handleWindowFocus() {
+  if (!isExamActive) return;
+  showTabSwitchWarning("window_focus");
+  logTabSwitch("Window gained focus");
+}
+
+function handleBeforeUnload(e) {
+  if (!isExamActive) return;
+
+  const message =
+    "Are you sure you want to leave the exam? Your progress may be lost.";
+  e.returnValue = message;
+  return message;
+}
+
+function logTabSwitch(action) {
+  tabSwitchCount++;
+  const timestamp = new Date().toISOString();
+
+  console.log(`Tab Switch #${tabSwitchCount}: ${action} at ${timestamp}`);
+
+  // Store in localStorage for tracking
+  const tabSwitchLog = JSON.parse(localStorage.getItem("tabSwitchLog") || "[]");
+  tabSwitchLog.push({
+    examId: currentExamId,
+    action: action,
+    timestamp: timestamp,
+    questionIndex: currentQuestionIndex,
+    timeRemaining: timeRemaining,
+  });
+  localStorage.setItem("tabSwitchLog", JSON.stringify(tabSwitchLog));
+
+  // Show warning if too many switches
+  if (tabSwitchCount >= 3) {
+    showSevereTabWarning();
+  }
+}
+
+function showTabSwitchWarning(type) {
+  let message = "";
+  let icon = "fas fa-exclamation-triangle";
+
+  switch (type) {
+    case "tab_hidden":
+      message = `⚠️ Warning: Tab switching detected! (${tabSwitchCount + 1} violations)`;
+      break;
+    case "tab_visible":
+      message = `👁️ Tab focus restored. Please stay on the exam page.`;
+      icon = "fas fa-eye";
+      break;
+    case "window_blur":
+      message = `⚠️ Warning: Window focus lost! Stay focused on the exam.`;
+      break;
+    case "window_focus":
+      message = `✅ Window focus restored.`;
+      icon = "fas fa-check-circle";
+      break;
+  }
+
+  showNotification(
+    message,
+    type.includes("visible") || type.includes("focus") ? "info" : "warning",
+  );
+}
+
+function showSevereTabWarning() {
+  const modal = document.createElement("div");
+  modal.className = "modal fade show";
+  modal.style.display = "block";
+  modal.innerHTML = `
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modern-modal" style="border: 3px solid var(--danger-color);">
+        <div class="modal-header" style="background: var(--danger-color); color: white;">
+          <i class="fas fa-ban" style="font-size: 1.5rem; margin-right: 0.5rem;"></i>
+          <h5 class="modal-title">Severe Security Violation</h5>
+        </div>
+        <div class="modal-body text-center">
+          <div style="font-size: 4rem; color: var(--danger-color); margin-bottom: 1rem;">
+            <i class="fas fa-exclamation-triangle"></i>
+          </div>
+          <h4 style="color: var(--danger-color);">Multiple Tab Switches Detected!</h4>
+          <p>You have switched tabs/windows <strong>${tabSwitchCount} times</strong>.</p>
+          <p>This behavior is being logged and may result in exam disqualification.</p>
+          <div class="alert alert-danger mt-3">
+            <i class="fas fa-shield-alt"></i>
+            <strong>Final Warning:</strong> Stay focused on this exam tab only.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-modern btn-primary" onclick="closeSevereWarning()">
+            I Understand - Continue Exam
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  modal.id = "severeWarningModal";
+}
+
+function closeSevereWarning() {
+  const modal = document.getElementById("severeWarningModal");
+  if (modal) {
+    modal.remove();
+  }
+}
+
+// PDF Image Optimization
+function optimizePDFImages() {
+  const canvases = document.querySelectorAll("#pdfViewer canvas");
+
+  canvases.forEach((canvas) => {
+    // Convert canvas to optimized blob
+    canvas.toBlob(
+      (blob) => {
+        if (blob && blob.size > 100000) {
+          // If larger than 100KB
+          compressCanvasImage(canvas);
+        }
+      },
+      "image/jpeg",
+      0.8,
+    );
+  });
+}
+
+function compressCanvasImage(canvas) {
+  const ctx = canvas.getContext("2d");
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // Create a temporary canvas for compression
+  const tempCanvas = document.createElement("canvas");
+  const tempCtx = tempCanvas.getContext("2d");
+
+  // Reduce canvas size if it's too large
+  const maxWidth = 1200;
+  const maxHeight = 1600;
+
+  let { width, height } = canvas;
+
+  if (width > maxWidth || height > maxHeight) {
+    const ratio = Math.min(maxWidth / width, maxHeight / height);
+    width *= ratio;
+    height *= ratio;
+
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+
+    // Draw scaled image
+    tempCtx.drawImage(canvas, 0, 0, width, height);
+
+    // Update original canvas
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(tempCanvas, 0, 0);
+
+    console.log(
+      "PDF image optimized: reduced size by",
+      Math.round((1 - (width * height) / (canvas.width * canvas.height)) * 100),
+      "%",
+    );
+  }
+}
+
+// Enhanced PDF loading with optimization
+async function loadPDFOptimized(pdfLink) {
+  const pdfCard = document.getElementById("pdfCard");
+  const pdfViewer = document.getElementById("pdfViewer");
+
+  if (pdfLink && pdfLink.includes("raw.githubusercontent.com")) {
+    pdfCard.style.display = "block";
+    pdfViewer.innerHTML =
+      '<div class="text-center"><div class="spinner"></div><p>Loading and optimizing PDF...</p></div>';
+
+    try {
+      const pdf = await pdfjsLib.getDocument(pdfLink).promise;
+      pdfViewer.innerHTML = "";
+
+      const numPages = pdf.numPages;
+
+      // Load pages progressively for better performance
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        await loadPDFPage(pdf, pageNum, pdfViewer);
+
+        // Add small delay between pages to prevent blocking
+        if (pageNum % 2 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      // Optimize all images after loading
+      setTimeout(() => {
+        optimizePDFImages();
+        showNotification("PDF optimized for better performance", "success");
+      }, 1000);
+    } catch (error) {
+      console.error("PDF Error:", error);
+      pdfViewer.innerHTML = `
+        <div class="alert alert-warning d-flex align-items-center">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <span>Error loading PDF: ${error.message}</span>
+        </div>
+      `;
+    }
+  } else {
+    pdfCard.style.display = "none";
+  }
+}
+
+async function loadPDFPage(pdf, pageNum, container) {
+  const page = await pdf.getPage(pageNum);
+  const canvas = document.createElement("canvas");
+  canvas.style.marginBottom = "20px";
+  canvas.style.maxWidth = "100%";
+  canvas.style.height = "auto";
+  container.appendChild(canvas);
+
+  const context = canvas.getContext("2d");
+
+  // Calculate optimal scale based on container width
+  const containerWidth = container.clientWidth - 32; // Account for padding
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(containerWidth / viewport.width, 2.0); // Max scale of 2.0
+
+  const scaledViewport = page.getViewport({ scale });
+  canvas.height = scaledViewport.height;
+  canvas.width = scaledViewport.width;
+
+  await page.render({ canvasContext: context, viewport: scaledViewport })
+    .promise;
+}
 
 // Utility function for debouncing
 function debounce(func, wait) {
@@ -294,8 +576,8 @@ async function loadQuestion() {
       <p>${data.question}</p>
     `;
 
-    // Handle PDF loading
-    await loadPDF(data.pdf_link);
+    // Handle PDF loading with optimization
+    await loadPDFOptimized(data.pdf_link);
 
     // Handle resource links
     handleResources(data.resource_link);
@@ -425,9 +707,24 @@ function prevQuestion() {
 
 // Finish exam
 function finishExam() {
+  isExamActive = false; // Disable tab switching detection
+  clearInterval(examTimer); // Stop timer
+
   const modal = new bootstrap.Modal(document.getElementById("successModal"));
   document.getElementById("summaryTotal").textContent = totalQuestions;
   document.getElementById("summaryExamId").textContent = currentExamId;
+
+  // Add tab switch summary to modal
+  const tabSwitchSummary = document.createElement("div");
+  tabSwitchSummary.className = "summary-item";
+  tabSwitchSummary.innerHTML = `
+    <span class="label">Tab Switches:</span>
+    <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
+      ${tabSwitchCount} violations
+    </span>
+  `;
+  document.querySelector(".exam-summary").appendChild(tabSwitchSummary);
+
   modal.show();
 }
 
