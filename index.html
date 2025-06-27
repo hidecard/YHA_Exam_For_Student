@@ -16,6 +16,17 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- Offline Banner -->
+    <div id="offlineBanner" class="offline-banner" style="display: none">
+      <div class="offline-content">
+        <i class="fas fa-wifi-slash"></i>
+        <span>You're offline. Your answers are being saved locally.</span>
+        <button onclick="syncWhenOnline()" class="sync-btn">
+          <i class="fas fa-sync"></i> Try to sync
+        </button>
+      </div>
+    </div>
+
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
       <div class="loader">
@@ -91,19 +102,32 @@
 
       <!-- Exam Section -->
       <div id="examSection" class="exam-section" style="display: none">
-        <!-- Progress Bar -->
+        <!-- Progress & Timer Bar -->
         <div class="progress-section">
           <div class="progress-info">
             <span class="progress-text"
               >Question <span id="currentQuestionNum">1</span> of
               <span id="totalQuestionsNum">1</span></span
             >
+            <div class="timer-section">
+              <div class="timer-display" id="examTimer">
+                <i class="fas fa-clock"></i>
+                <span id="timerText">30:00</span>
+              </div>
+              <div class="connection-status" id="connectionStatus">
+                <i class="fas fa-wifi" id="connectionIcon"></i>
+                <span id="connectionText">Online</span>
+              </div>
+            </div>
             <span class="exam-id-display"
               >Exam ID: <span id="currentExamId"></span
             ></span>
           </div>
           <div class="progress-bar-modern">
             <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <div class="timer-bar-container">
+            <div class="timer-bar" id="timerBar"></div>
           </div>
         </div>
 
@@ -117,6 +141,25 @@
           </div>
           <div id="questionContainer" class="question-content">
             <!-- Question content will be loaded here -->
+          </div>
+
+          <!-- Answer Section -->
+          <div class="answer-section">
+            <h4><i class="fas fa-pencil-alt"></i> Your Answer</h4>
+            <div class="answer-input-wrapper">
+              <textarea
+                id="answerInput"
+                class="answer-input"
+                placeholder="Type your answer here..."
+                rows="4"
+              ></textarea>
+              <div class="answer-tools">
+                <span class="auto-save-indicator" id="autoSaveStatus">
+                  <i class="fas fa-save"></i> Auto-saved
+                </span>
+                <span class="word-count" id="wordCount">0 words</span>
+              </div>
+            </div>
           </div>
         </div>
 
