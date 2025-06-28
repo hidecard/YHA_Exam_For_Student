@@ -399,120 +399,55 @@ function closeSevereWarning() {
   }
 }
 
-// PDF Image Optimization
-function optimizePDFImages() {
-  const canvases = document.querySelectorAll("#pdfViewer canvas");
+// Simple PDF loading without canvas rendering
+async function loadPDF(pdfLink) {
+  const pdfCard = document.getElementById('pdfCard');
+  const pdfViewer = document.getElementById('pdfViewer');
 
-  canvases.forEach((canvas) => {
-    // Convert canvas to optimized blob
-    canvas.toBlob(
-      (blob) => {
-        if (blob && blob.size > 100000) {
-          // If larger than 100KB
-          compressCanvasImage(canvas);
-        }
-      },
-      "image/jpeg",
-      0.8,
-    );
-  });
-}
-
-function compressCanvasImage(canvas) {
-  const ctx = canvas.getContext("2d");
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  // Create a temporary canvas for compression
-  const tempCanvas = document.createElement("canvas");
-  const tempCtx = tempCanvas.getContext("2d");
-
-  // Reduce canvas size if it's too large
-  const maxWidth = 1200;
-  const maxHeight = 1600;
-
-  let { width, height } = canvas;
-
-  if (width > maxWidth || height > maxHeight) {
-    const ratio = Math.min(maxWidth / width, maxHeight / height);
-    width *= ratio;
-    height *= ratio;
-
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-
-    // Draw scaled image
-    tempCtx.drawImage(canvas, 0, 0, width, height);
-
-    // Update original canvas
-    canvas.width = width;
-    canvas.height = height;
-    ctx.drawImage(tempCanvas, 0, 0);
-
-    console.log(
-      "PDF image optimized: reduced size by",
-      Math.round((1 - (width * height) / (canvas.width * canvas.height)) * 100),
-      "%",
-    );
-  }
-}
-
-// Enhanced PDF loading with optimization
-async function loadPDFOptimized(pdfLink) {
-  const pdfCard = document.getElementById("pdfCard");
-  const pdfViewer = document.getElementById("pdfViewer");
-
-  if (pdfLink && pdfLink.includes("raw.githubusercontent.com")) {
-    pdfCard.style.display = "block";
-    pdfViewer.innerHTML =
-      '<div class="text-center"><div class="spinner"></div><p>Loading and optimizing PDF...</p></div>';
+  if (pdfLink && (pdfLink.includes('raw.githubusercontent.com') || pdfLink.includes('drive.google.com'))) {
+    pdfCard.style.display = 'block';
+    pdfViewer.innerHTML = '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
 
     try {
-      const pdf = await pdfjsLib.getDocument(pdfLink).promise;
-      pdfViewer.innerHTML = "";
+      // Use iframe or embed to display PDF directly
+      pdfViewer.innerHTML = `
+        <div class="pdf-container">
+          <iframe
+            src="${pdfLink}"
+            width="100%"
+            height="600px"
+            style="border: none; border-radius: 12px;"
+            title="Exam PDF Document">
+          </iframe>
+          <div class="pdf-fallback" style="margin-top: 16px;">
+            <p class="text-muted">If the PDF doesn't display properly:</p>
+            <a href="${pdfLink}" target="_blank" class="btn btn-outline-primary">
+              <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
+            </a>
+          </div>
+        </div>
+      `;
 
-      const numPages = pdf.numPages;
+      showNotification('PDF loaded successfully', 'success');
 
-      // Load pages progressively for better performance
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        await loadPDFPage(pdf, pageNum, pdfViewer);
-
-        // Add small delay between pages to prevent blocking
-        if (pageNum % 2 === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-
-      // Optimize all images after loading
-      setTimeout(() => {
-        optimizePDFImages();
-        showNotification("PDF optimized for better performance", "success");
-      }, 1000);
     } catch (error) {
-      console.error("PDF Error:", error);
+      console.error('PDF Error:', error);
       pdfViewer.innerHTML = `
         <div class="alert alert-warning d-flex align-items-center">
           <i class="fas fa-exclamation-triangle me-2"></i>
           <span>Error loading PDF: ${error.message}</span>
         </div>
+        <div class="text-center mt-3">
+          <a href="${pdfLink}" target="_blank" class="btn btn-primary">
+            <i class="fas fa-download"></i> Download PDF
+          </a>
+        </div>
       `;
     }
   } else {
-    pdfCard.style.display = "none";
+    pdfCard.style.display = 'none';
   }
 }
-
-async function loadPDFPage(pdf, pageNum, container) {
-  const page = await pdf.getPage(pageNum);
-  const canvas = document.createElement("canvas");
-  canvas.style.marginBottom = "20px";
-  canvas.style.maxWidth = "100%";
-  canvas.style.height = "auto";
-  container.appendChild(canvas);
-
-  const context = canvas.getContext("2d");
-
-  // Calculate optimal scale based on container width
-  const containerWidth = container.clientWidth - 32; // Account for padding
   const viewport = page.getViewport({ scale: 1 });
   const scale = Math.min(containerWidth / viewport.width, 2.0); // Max scale of 2.0
 
@@ -576,8 +511,8 @@ async function loadQuestion() {
       <p>${data.question}</p>
     `;
 
-    // Handle PDF loading with optimization
-    await loadPDFOptimized(data.pdf_link);
+    // Handle PDF loading
+    await loadPDF(data.pdf_link);
 
     // Handle resource links
     handleResources(data.resource_link);

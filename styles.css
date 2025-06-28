@@ -708,43 +708,30 @@ body {
   font-size: 0.9rem;
 }
 
-/* PDF Optimization Indicators */
-.pdf-optimization-badge {
-  background: var(--success-color);
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--border-radius);
-  font-size: 0.8rem;
-  margin-left: 0.5rem;
-}
-
-.pdf-loading-progress {
+/* Simple PDF Viewer */
+.pdf-container {
   width: 100%;
-  height: 4px;
-  background: var(--gray-200);
-  border-radius: 2px;
-  overflow: hidden;
-  margin: 1rem 0;
 }
 
-.pdf-loading-bar {
-  height: 100%;
-  background: var(--primary-gradient);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-/* Enhanced PDF Viewer */
-.pdf-viewer canvas {
-  transition: opacity 0.3s ease;
+.pdf-container iframe {
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
-  margin-bottom: 1rem;
-  pointer-events: none;
+  transition: var(--transition);
 }
 
-.pdf-viewer canvas:hover {
+.pdf-container iframe:hover {
   box-shadow: var(--shadow-lg);
+}
+
+.pdf-fallback {
+  text-align: center;
+  padding: 1rem;
+  background: var(--gray-100);
+  border-radius: var(--border-radius);
+}
+
+[data-theme="dark"] .pdf-fallback {
+  background: var(--gray-200);
 }
 
 /* Tab Switch Counter in Header */
