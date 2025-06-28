@@ -289,7 +289,12 @@ async function loadQuestion() {
     `;
 
     // Handle PDF loading
-    await loadPDF(data.pdf_link);
+    try {
+      await loadPDF(data.pdf_link);
+    } catch (pdfError) {
+      console.error('PDF loading error:', pdfError);
+      showNotification('PDF loading failed, but exam can continue', 'warning');
+    }
 
     // Handle resource links
     handleResources(data.resource_link);
@@ -318,26 +323,43 @@ async function loadPDF(pdfLink) {
 
   if (
     pdfLink &&
-    (pdfLink.includes("raw.githubusercontent.com") ||
-      pdfLink.includes("drive.google.com"))
-  ) {
-    pdfCard.style.display = "block";
-    pdfViewer.innerHTML =
-      '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
+  if (pdfLink && (pdfLink.includes('raw.githubusercontent.com') || pdfLink.includes('drive.google.com'))) {
+    pdfCard.style.display = 'block';
+    pdfViewer.innerHTML = '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
 
     try {
-      // Use iframe to display PDF directly
+      // Use iframe to display PDF directly with error handling
+      const iframe = document.createElement('iframe');
+      iframe.src = pdfLink;
+      iframe.width = '100%';
+      iframe.height = '600px';
+      iframe.style.border = 'none';
+      iframe.style.borderRadius = '12px';
+      iframe.title = 'Exam PDF Document';
+
+      iframe.onload = function() {
+        showNotification('PDF loaded successfully', 'success');
+      };
+
+      iframe.onerror = function() {
+        console.error('PDF iframe loading failed');
+        pdfViewer.innerHTML = `
+          <div class="alert alert-warning d-flex align-items-center">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <span>PDF could not be displayed inline. Please use the link below.</span>
+          </div>
+          <div class="text-center mt-3">
+            <a href="${pdfLink}" target="_blank" class="btn btn-primary">
+              <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
+            </a>
+          </div>
+        `;
+      };
+
       pdfViewer.innerHTML = `
         <div class="pdf-container">
-          <iframe 
-            src="${pdfLink}" 
-            width="100%" 
-            height="600px" 
-            style="border: none; border-radius: 12px;"
-            title="Exam PDF Document">
-          </iframe>
-          <div class="pdf-fallback" style="margin-top: 16px;">
-            <p class="text-muted">If the PDF doesn't display properly:</p>
+          <div class="pdf-fallback" style="margin-bottom: 16px;">
+            <p class="text-muted">If the PDF doesn't display properly below:</p>
             <a href="${pdfLink}" target="_blank" class="btn btn-outline-primary">
               <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
             </a>
@@ -345,22 +367,25 @@ async function loadPDF(pdfLink) {
         </div>
       `;
 
-      showNotification("PDF loaded successfully", "success");
+      pdfViewer.querySelector('.pdf-container').appendChild(iframe);
+
     } catch (error) {
-      console.error("PDF Error:", error);
+      console.error('PDF Error:', error);
       pdfViewer.innerHTML = `
         <div class="alert alert-warning d-flex align-items-center">
           <i class="fas fa-exclamation-triangle me-2"></i>
-          <span>Error loading PDF: ${error.message}</span>
+          <span>Error loading PDF. Please use the direct link.</span>
         </div>
         <div class="text-center mt-3">
           <a href="${pdfLink}" target="_blank" class="btn btn-primary">
-            <i class="fas fa-download"></i> Download PDF
+            <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
           </a>
         </div>
       `;
     }
   } else {
+    pdfCard.style.display = 'none';
+  }
     pdfCard.style.display = "none";
   }
 }
