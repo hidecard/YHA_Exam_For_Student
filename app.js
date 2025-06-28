@@ -11,7 +11,6 @@ let tabSwitchCount = 0;
 let lastVisibilityChange = Date.now();
 const API_URL =
   "https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec";
-("https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec");
 
 // Initialize app
 document.addEventListener("DOMContentLoaded", function () {
@@ -133,6 +132,14 @@ async function startExam() {
   }
 }
 
+// Show exam section
+function showExamSection() {
+  document.getElementById("welcomeSection").style.display = "none";
+  document.getElementById("examSection").style.display = "block";
+  document.getElementById("currentExamId").textContent = currentExamId;
+  updateProgress();
+}
+
 // Timer functions
 function startTimer() {
   if (examTimer) clearInterval(examTimer);
@@ -248,6 +255,208 @@ function syncWhenOnline() {
   } else {
     showNotification("Still offline. Please check your connection.", "warning");
   }
+}
+
+// Enhanced load question function
+async function loadQuestion() {
+  try {
+    showLoading();
+
+    const response = await fetch(
+      `${API_URL}?action=getExam&examId=${currentExamId}&questionIndex=${currentQuestionIndex}`,
+    );
+    const data = await response.json();
+
+    if (data.error) {
+      document.getElementById("questionContainer").innerHTML = `
+        <div class="alert alert-danger d-flex align-items-center">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <span>${data.error}</span>
+        </div>
+      `;
+      return;
+    }
+
+    totalQuestions = data.totalQuestions;
+    document.getElementById("totalQuestionsNum").textContent = totalQuestions;
+
+    // Update question content
+    document.getElementById("questionTitle").textContent =
+      `Question ${currentQuestionIndex + 1}`;
+    document.getElementById("questionContainer").innerHTML = `
+      <h3>Question ${currentQuestionIndex + 1}</h3>
+      <p>${data.question}</p>
+    `;
+
+    // Handle PDF loading
+    await loadPDF(data.pdf_link);
+
+    // Handle resource links
+    handleResources(data.resource_link);
+
+    // Update navigation
+    updateNavigation();
+    updateProgress();
+
+    hideLoading();
+  } catch (error) {
+    hideLoading();
+    console.error("Error loading question:", error);
+    document.getElementById("questionContainer").innerHTML = `
+      <div class="alert alert-danger d-flex align-items-center">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <span>Error loading question: ${error.message}</span>
+      </div>
+    `;
+  }
+}
+
+// Simple PDF loading without canvas rendering
+async function loadPDF(pdfLink) {
+  const pdfCard = document.getElementById("pdfCard");
+  const pdfViewer = document.getElementById("pdfViewer");
+
+  if (
+    pdfLink &&
+    (pdfLink.includes("raw.githubusercontent.com") ||
+      pdfLink.includes("drive.google.com"))
+  ) {
+    pdfCard.style.display = "block";
+    pdfViewer.innerHTML =
+      '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
+
+    try {
+      // Use iframe to display PDF directly
+      pdfViewer.innerHTML = `
+        <div class="pdf-container">
+          <iframe 
+            src="${pdfLink}" 
+            width="100%" 
+            height="600px" 
+            style="border: none; border-radius: 12px;"
+            title="Exam PDF Document">
+          </iframe>
+          <div class="pdf-fallback" style="margin-top: 16px;">
+            <p class="text-muted">If the PDF doesn't display properly:</p>
+            <a href="${pdfLink}" target="_blank" class="btn btn-outline-primary">
+              <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
+            </a>
+          </div>
+        </div>
+      `;
+
+      showNotification("PDF loaded successfully", "success");
+    } catch (error) {
+      console.error("PDF Error:", error);
+      pdfViewer.innerHTML = `
+        <div class="alert alert-warning d-flex align-items-center">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <span>Error loading PDF: ${error.message}</span>
+        </div>
+        <div class="text-center mt-3">
+          <a href="${pdfLink}" target="_blank" class="btn btn-primary">
+            <i class="fas fa-download"></i> Download PDF
+          </a>
+        </div>
+      `;
+    }
+  } else {
+    pdfCard.style.display = "none";
+  }
+}
+
+// Handle resources
+function handleResources(resourceLink) {
+  const resourcesSection = document.getElementById("resourcesSection");
+  const downloadBtn = document.getElementById("resourceDownload");
+
+  if (
+    resourceLink &&
+    (resourceLink.includes("raw.githubusercontent.com") ||
+      resourceLink.includes("drive.google.com"))
+  ) {
+    resourcesSection.style.display = "block";
+    downloadBtn.href = resourceLink;
+    downloadBtn.style.display = "inline-flex";
+    downloadBtn.innerHTML =
+      '<i class="fas fa-file-download"></i> Download Resource';
+  } else {
+    resourcesSection.style.display = "none";
+  }
+}
+
+// Update navigation
+function updateNavigation() {
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const finishBtn = document.getElementById("finishBtn");
+
+  prevBtn.style.display = currentQuestionIndex > 0 ? "inline-flex" : "none";
+
+  if (currentQuestionIndex < totalQuestions - 1) {
+    nextBtn.style.display = "inline-flex";
+    finishBtn.style.display = "none";
+  } else {
+    nextBtn.style.display = "none";
+    finishBtn.style.display = "inline-flex";
+  }
+}
+
+// Update progress
+function updateProgress() {
+  const currentQuestionNum = document.getElementById("currentQuestionNum");
+  const progressFill = document.getElementById("progressFill");
+
+  currentQuestionNum.textContent = currentQuestionIndex + 1;
+
+  const progressPercentage =
+    ((currentQuestionIndex + 1) / totalQuestions) * 100;
+  progressFill.style.width = `${progressPercentage}%`;
+}
+
+// Navigation functions
+function nextQuestion() {
+  if (currentQuestionIndex < totalQuestions - 1) {
+    currentQuestionIndex++;
+    loadQuestion();
+    scrollToTop();
+  }
+}
+
+function prevQuestion() {
+  if (currentQuestionIndex > 0) {
+    currentQuestionIndex--;
+    loadQuestion();
+    scrollToTop();
+  }
+}
+
+// Finish exam
+function finishExam() {
+  isExamActive = false; // Disable tab switching detection
+  clearInterval(examTimer); // Stop timer
+
+  const modal = new bootstrap.Modal(document.getElementById("successModal"));
+  document.getElementById("summaryTotal").textContent = totalQuestions;
+  document.getElementById("summaryExamId").textContent = currentExamId;
+
+  // Add tab switch summary to modal
+  const tabSwitchSummary = document.createElement("div");
+  tabSwitchSummary.className = "summary-item";
+  tabSwitchSummary.innerHTML = `
+    <span class="label">Tab Switches:</span>
+    <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
+      ${tabSwitchCount} violations
+    </span>
+  `;
+  document.querySelector(".exam-summary").appendChild(tabSwitchSummary);
+
+  modal.show();
+}
+
+// Restart exam
+function restartExam() {
+  location.reload();
 }
 
 // Tab Switching Detection
@@ -399,265 +608,6 @@ function closeSevereWarning() {
   }
 }
 
-// Simple PDF loading without canvas rendering
-async function loadPDF(pdfLink) {
-  const pdfCard = document.getElementById('pdfCard');
-  const pdfViewer = document.getElementById('pdfViewer');
-
-  if (pdfLink && (pdfLink.includes('raw.githubusercontent.com') || pdfLink.includes('drive.google.com'))) {
-    pdfCard.style.display = 'block';
-    pdfViewer.innerHTML = '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
-
-    try {
-      // Use iframe or embed to display PDF directly
-      pdfViewer.innerHTML = `
-        <div class="pdf-container">
-          <iframe
-            src="${pdfLink}"
-            width="100%"
-            height="600px"
-            style="border: none; border-radius: 12px;"
-            title="Exam PDF Document">
-          </iframe>
-          <div class="pdf-fallback" style="margin-top: 16px;">
-            <p class="text-muted">If the PDF doesn't display properly:</p>
-            <a href="${pdfLink}" target="_blank" class="btn btn-outline-primary">
-              <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
-            </a>
-          </div>
-        </div>
-      `;
-
-      showNotification('PDF loaded successfully', 'success');
-
-    } catch (error) {
-      console.error('PDF Error:', error);
-      pdfViewer.innerHTML = `
-        <div class="alert alert-warning d-flex align-items-center">
-          <i class="fas fa-exclamation-triangle me-2"></i>
-          <span>Error loading PDF: ${error.message}</span>
-        </div>
-        <div class="text-center mt-3">
-          <a href="${pdfLink}" target="_blank" class="btn btn-primary">
-            <i class="fas fa-download"></i> Download PDF
-          </a>
-        </div>
-      `;
-    }
-  } else {
-    pdfCard.style.display = 'none';
-  }
-
-
-// Utility function for debouncing
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-// Show exam section
-function showExamSection() {
-  document.getElementById("welcomeSection").style.display = "none";
-  document.getElementById("examSection").style.display = "block";
-  document.getElementById("currentExamId").textContent = currentExamId;
-  updateProgress();
-}
-
-// Enhanced load question function
-async function loadQuestion() {
-  try {
-    showLoading();
-
-    const response = await fetch(
-      `${API_URL}?action=getExam&examId=${currentExamId}&questionIndex=${currentQuestionIndex}`,
-    );
-    const data = await response.json();
-
-    if (data.error) {
-      document.getElementById("questionContainer").innerHTML = `
-        <div class="alert alert-danger d-flex align-items-center">
-          <i class="fas fa-exclamation-triangle me-2"></i>
-          <span>${data.error}</span>
-        </div>
-      `;
-      return;
-    }
-
-    totalQuestions = data.totalQuestions;
-    document.getElementById("totalQuestionsNum").textContent = totalQuestions;
-
-    // Update question content
-    document.getElementById("questionTitle").textContent =
-      `Question ${currentQuestionIndex + 1}`;
-    document.getElementById("questionContainer").innerHTML = `
-      <h3>Question ${currentQuestionIndex + 1}</h3>
-      <p>${data.question}</p>
-    `;
-
-    // Handle PDF loading
-    await loadPDF(data.pdf_link);
-
-    // Handle resource links
-    handleResources(data.resource_link);
-
-    // Update navigation
-    updateNavigation();
-    updateProgress();
-
-    hideLoading();
-  } catch (error) {
-    hideLoading();
-    console.error("Error loading question:", error);
-    document.getElementById("questionContainer").innerHTML = `
-      <div class="alert alert-danger d-flex align-items-center">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <span>Error loading question: ${error.message}</span>
-      </div>
-    `;
-  }
-}
-
-// Enhanced PDF loading
-async function loadPDF(pdfLink) {
-  const pdfCard = document.getElementById("pdfCard");
-  const pdfViewer = document.getElementById("pdfViewer");
-
-  if (pdfLink && pdfLink.includes("raw.githubusercontent.com")) {
-    pdfCard.style.display = "block";
-    pdfViewer.innerHTML =
-      '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
-
-    try {
-      const pdf = await pdfjsLib.getDocument(pdfLink).promise;
-      pdfViewer.innerHTML = "";
-
-      const numPages = pdf.numPages;
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const canvas = document.createElement("canvas");
-        canvas.style.marginBottom = "20px";
-        pdfViewer.appendChild(canvas);
-
-        const context = canvas.getContext("2d");
-        const viewport = page.getViewport({ scale: 1.5 });
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        await page.render({ canvasContext: context, viewport: viewport })
-          .promise;
-      }
-    } catch (error) {
-      console.error("PDF Error:", error);
-      pdfViewer.innerHTML = `
-        <div class="alert alert-warning d-flex align-items-center">
-          <i class="fas fa-exclamation-triangle me-2"></i>
-          <span>Error loading PDF: ${error.message}</span>
-        </div>
-      `;
-    }
-  } else {
-    pdfCard.style.display = "none";
-  }
-}
-
-// Handle resources
-function handleResources(resourceLink) {
-  const resourcesSection = document.getElementById("resourcesSection");
-  const downloadBtn = document.getElementById("resourceDownload");
-
-  if (resourceLink && resourceLink.includes("raw.githubusercontent.com")) {
-    resourcesSection.style.display = "block";
-    downloadBtn.href = resourceLink;
-    downloadBtn.style.display = "inline-flex";
-    downloadBtn.innerHTML =
-      '<i class="fas fa-file-download"></i> Download Resource';
-  } else {
-    resourcesSection.style.display = "none";
-  }
-}
-
-// Update navigation
-function updateNavigation() {
-  const prevBtn = document.getElementById("prevBtn");
-  const nextBtn = document.getElementById("nextBtn");
-  const finishBtn = document.getElementById("finishBtn");
-
-  prevBtn.style.display = currentQuestionIndex > 0 ? "inline-flex" : "none";
-
-  if (currentQuestionIndex < totalQuestions - 1) {
-    nextBtn.style.display = "inline-flex";
-    finishBtn.style.display = "none";
-  } else {
-    nextBtn.style.display = "none";
-    finishBtn.style.display = "inline-flex";
-  }
-}
-
-// Update progress
-function updateProgress() {
-  const currentQuestionNum = document.getElementById("currentQuestionNum");
-  const progressFill = document.getElementById("progressFill");
-
-  currentQuestionNum.textContent = currentQuestionIndex + 1;
-
-  const progressPercentage =
-    ((currentQuestionIndex + 1) / totalQuestions) * 100;
-  progressFill.style.width = `${progressPercentage}%`;
-}
-
-// Navigation functions are now included above
-
-function nextQuestion() {
-  if (currentQuestionIndex < totalQuestions - 1) {
-    currentQuestionIndex++;
-    loadQuestion();
-    scrollToTop();
-  }
-}
-
-function prevQuestion() {
-  if (currentQuestionIndex > 0) {
-    currentQuestionIndex--;
-    loadQuestion();
-    scrollToTop();
-  }
-}
-
-// Finish exam
-function finishExam() {
-  isExamActive = false; // Disable tab switching detection
-  clearInterval(examTimer); // Stop timer
-
-  const modal = new bootstrap.Modal(document.getElementById("successModal"));
-  document.getElementById("summaryTotal").textContent = totalQuestions;
-  document.getElementById("summaryExamId").textContent = currentExamId;
-
-  // Add tab switch summary to modal
-  const tabSwitchSummary = document.createElement("div");
-  tabSwitchSummary.className = "summary-item";
-  tabSwitchSummary.innerHTML = `
-    <span class="label">Tab Switches:</span>
-    <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
-      ${tabSwitchCount} violations
-    </span>
-  `;
-  document.querySelector(".exam-summary").appendChild(tabSwitchSummary);
-
-  modal.show();
-}
-
-// Restart exam
-function restartExam() {
-  location.reload();
-}
-
 // Utility functions
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -702,7 +652,7 @@ function togglePdfFullscreen() {
   }
 }
 
-// Add notification styles to CSS (will be injected)
+// Add notification styles
 const notificationStyles = `
 .notification-toast {
   position: fixed;
