@@ -9,6 +9,10 @@ let isOnline = navigator.onLine;
 let isExamActive = false;
 let tabSwitchCount = 0;
 let lastVisibilityChange = Date.now();
+let openedTabs = [];
+let tabSwitchLog = [];
+let windowFocusLog = [];
+let examSessionId = null;
 const API_URL =
   "https://script.google.com/macros/s/AKfycbwP2m20Mb3Jkmp351o-l4NV9j7B8bDytq229agCj53j3OZV0jX-ONCkv7ES03zARvtsWg/exec";
 
@@ -461,27 +465,226 @@ function finishExam() {
   isExamActive = false; // Disable tab switching detection
   clearInterval(examTimer); // Stop timer
 
-  const modal = new bootstrap.Modal(document.getElementById("successModal"));
-  document.getElementById("summaryTotal").textContent = totalQuestions;
-  document.getElementById("summaryExamId").textContent = currentExamId;
+  // Log exam completion
+  logWindowEvent("exam_completed", "Exam session completed");
 
-  // Add tab switch summary to modal
-  const existingSummary = document.querySelector(
-    ".exam-summary .tab-switch-summary",
-  );
-  if (!existingSummary) {
-    const tabSwitchSummary = document.createElement("div");
-    tabSwitchSummary.className = "summary-item tab-switch-summary";
-    tabSwitchSummary.innerHTML = `
-      <span class="label">Tab Switches:</span>
-      <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
-        ${tabSwitchCount} violations
-      </span>
-    `;
-    document.querySelector(".exam-summary").appendChild(tabSwitchSummary);
+  // Show detailed exam report modal
+  showExamCompletionReport();
+}
+
+function showExamCompletionReport() {
+  // Remove existing modal if any
+  const existingModal = document.getElementById("examReportModal");
+  if (existingModal) {
+    existingModal.remove();
   }
 
-  modal.show();
+  const totalExamTime = examStartTime
+    ? Math.floor((Date.now() - examStartTime.getTime()) / 1000)
+    : 0;
+  const minutes = Math.floor(totalExamTime / 60);
+  const seconds = totalExamTime % 60;
+
+  const modal = document.createElement("div");
+  modal.className = "modal fade show";
+  modal.style.display = "block";
+  modal.id = "examReportModal";
+  modal.innerHTML = `
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content modern-modal">
+        <div class="modal-header" style="background: var(--primary-gradient); color: white;">
+          <i class="fas fa-chart-line" style="font-size: 1.5rem; margin-right: 0.5rem;"></i>
+          <h5 class="modal-title">Exam Completion Report</h5>
+        </div>
+        <div class="modal-body">
+          <!-- Basic Exam Info -->
+          <div class="exam-summary">
+            <h6><i class="fas fa-info-circle"></i> Exam Summary</h6>
+            <div class="summary-item">
+              <span class="label">Exam ID:</span>
+              <span class="value">${currentExamId}</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Total Questions:</span>
+              <span class="value">${totalQuestions}</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Total Time:</span>
+              <span class="value">${minutes}m ${seconds}s</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Session ID:</span>
+              <span class="value" style="font-family: monospace; font-size: 0.8rem;">${examSessionId}</span>
+            </div>
+          </div>
+
+          <!-- Security Report -->
+          <div class="security-report mt-4">
+            <h6><i class="fas fa-shield-alt"></i> Security Report</h6>
+            <div class="summary-item">
+              <span class="label">Tab Switches:</span>
+              <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
+                ${tabSwitchCount} violations
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="label">New Tabs Opened:</span>
+              <span class="value" style="color: ${openedTabs.length > 0 ? "var(--danger-color)" : "var(--success-color)"}">
+                ${openedTabs.length} tabs
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Window Events:</span>
+              <span class="value">${windowFocusLog.length} events</span>
+            </div>
+          </div>
+
+          <!-- Opened Tabs Details -->
+          ${
+            openedTabs.length > 0
+              ? `
+          <div class="opened-tabs mt-4">
+            <h6><i class="fas fa-external-link-alt"></i> Opened Tabs/Windows</h6>
+            <div class="tab-list" style="max-height: 200px; overflow-y: auto;">
+              ${openedTabs
+                .map(
+                  (tab, index) => `
+                <div class="tab-item" style="background: var(--gray-100); border-radius: 8px; padding: 12px; margin-bottom: 8px;">
+                  <div style="font-weight: 600; color: var(--danger-color);">#${index + 1} - ${tab.method}</div>
+                  <div style="font-size: 0.9rem; color: var(--gray-600); margin: 4px 0;">
+                    <i class="fas fa-link"></i> URL: <span style="font-family: monospace;">${tab.url}</span>
+                  </div>
+                  <div style="font-size: 0.8rem; color: var(--gray-500);">
+                    <i class="fas fa-clock"></i> Time: ${new Date(tab.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
+              `,
+                )
+                .join("")}
+            </div>
+          </div>
+          `
+              : ""
+          }
+
+          <!-- Tab Switch Timeline -->
+          ${
+            tabSwitchLog.length > 0
+              ? `
+          <div class="tab-switch-timeline mt-4">
+            <h6><i class="fas fa-history"></i> Tab Switch Timeline</h6>
+            <div class="timeline-list" style="max-height: 250px; overflow-y: auto;">
+              ${tabSwitchLog
+                .map(
+                  (log, index) => `
+                <div class="timeline-item" style="border-left: 3px solid var(--warning-color); padding-left: 12px; margin-bottom: 12px;">
+                  <div style="font-weight: 600; color: var(--warning-color);">#${index + 1} - ${log.action}</div>
+                  <div style="font-size: 0.9rem; color: var(--gray-600); margin: 4px 0;">
+                    Question ${log.questionIndex + 1} | Time Remaining: ${Math.floor(log.timeRemaining / 60)}:${(log.timeRemaining % 60).toString().padStart(2, "0")}
+                  </div>
+                  <div style="font-size: 0.8rem; color: var(--gray-500);">
+                    ${new Date(log.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              `,
+                )
+                .join("")}
+            </div>
+          </div>
+          `
+              : ""
+          }
+
+          <!-- Integrity Score -->
+          <div class="integrity-score mt-4 p-3" style="background: ${getIntegrityColor()}; border-radius: 12px; text-align: center;">
+            <h6 style="margin: 0; color: white;">
+              <i class="fas fa-medal"></i> Exam Integrity Score
+            </h6>
+            <div style="font-size: 2rem; font-weight: bold; color: white; margin: 8px 0;">
+              ${calculateIntegrityScore()}%
+            </div>
+            <div style="color: rgba(255,255,255,0.9); font-size: 0.9rem;">
+              ${getIntegrityMessage()}
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" onclick="downloadReport()">
+            <i class="fas fa-download"></i> Download Report
+          </button>
+          <button type="button" class="btn-modern btn-primary" onclick="restartExam()">
+            Take Another Exam
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function calculateIntegrityScore() {
+  let score = 100;
+
+  // Deduct points for tab switches
+  score -= Math.min(tabSwitchCount * 10, 50);
+
+  // Deduct points for opened tabs
+  score -= Math.min(openedTabs.length * 15, 40);
+
+  // Bonus for completing exam
+  if (currentQuestionIndex >= totalQuestions - 1) {
+    score += 5;
+  }
+
+  return Math.max(score, 0);
+}
+
+function getIntegrityColor() {
+  const score = calculateIntegrityScore();
+  if (score >= 90) return "var(--success-gradient)";
+  if (score >= 70) return "var(--warning-color)";
+  return "var(--danger-color)";
+}
+
+function getIntegrityMessage() {
+  const score = calculateIntegrityScore();
+  if (score >= 90) return "Excellent! No security violations detected.";
+  if (score >= 70) return "Good, but some minor violations detected.";
+  if (score >= 50) return "Fair, multiple violations detected.";
+  return "Poor integrity - many security violations.";
+}
+
+function downloadReport() {
+  const reportData = {
+    examInfo: {
+      examId: currentExamId,
+      sessionId: examSessionId,
+      totalQuestions: totalQuestions,
+      completedAt: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+    },
+    securityReport: {
+      tabSwitchCount: tabSwitchCount,
+      openedTabsCount: openedTabs.length,
+      integrityScore: calculateIntegrityScore(),
+    },
+    openedTabs: openedTabs,
+    tabSwitchLog: tabSwitchLog,
+    windowFocusLog: windowFocusLog,
+  };
+
+  const blob = new Blob([JSON.stringify(reportData, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `exam-report-${currentExamId}-${examSessionId}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  showNotification("Report downloaded successfully!", "success");
 }
 
 // Restart exam
@@ -489,8 +692,12 @@ function restartExam() {
   location.reload();
 }
 
-// Tab Switching Detection
+// Enhanced Tab Switching Detection
 function setupTabSwitchingDetection() {
+  // Generate unique session ID
+  examSessionId =
+    "exam_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+
   // Listen for visibility change events
   document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -500,6 +707,15 @@ function setupTabSwitchingDetection() {
 
   // Listen for beforeunload (tab closing/refreshing)
   window.addEventListener("beforeunload", handleBeforeUnload);
+
+  // Track new windows/tabs opened
+  trackNewWindows();
+
+  // Track keyboard shortcuts that might open new tabs
+  trackKeyboardShortcuts();
+
+  // Initialize focus tracking
+  logWindowEvent("exam_started", "Exam session started");
 }
 
 function handleVisibilityChange() {
@@ -548,19 +764,35 @@ function handleBeforeUnload(e) {
 function logTabSwitch(action) {
   tabSwitchCount++;
   const timestamp = new Date().toISOString();
+  const timeSpent = examStartTime
+    ? Math.floor((Date.now() - examStartTime.getTime()) / 1000)
+    : 0;
 
   console.log(`Tab Switch #${tabSwitchCount}: ${action} at ${timestamp}`);
 
-  // Store in localStorage for tracking
-  const tabSwitchLog = JSON.parse(localStorage.getItem("tabSwitchLog") || "[]");
-  tabSwitchLog.push({
+  // Enhanced logging with more details
+  const logEntry = {
+    sessionId: examSessionId,
     examId: currentExamId,
     action: action,
     timestamp: timestamp,
     questionIndex: currentQuestionIndex,
     timeRemaining: timeRemaining,
-  });
-  localStorage.setItem("tabSwitchLog", JSON.stringify(tabSwitchLog));
+    timeSpentInExam: timeSpent,
+    userAgent: navigator.userAgent,
+    screenResolution: `${screen.width}x${screen.height}`,
+    windowSize: `${window.innerWidth}x${window.innerHeight}`,
+    documentTitle: document.title,
+    currentUrl: window.location.href,
+  };
+
+  tabSwitchLog.push(logEntry);
+
+  // Store in localStorage for tracking
+  localStorage.setItem(
+    `tabSwitchLog_${examSessionId}`,
+    JSON.stringify(tabSwitchLog),
+  );
 
   // Show warning if too many switches
   if (tabSwitchCount >= 3) {
@@ -568,12 +800,121 @@ function logTabSwitch(action) {
   }
 }
 
+function logWindowEvent(action, details) {
+  const timestamp = new Date().toISOString();
+  const timeSpent = examStartTime
+    ? Math.floor((Date.now() - examStartTime.getTime()) / 1000)
+    : 0;
+
+  const logEntry = {
+    sessionId: examSessionId,
+    examId: currentExamId,
+    action: action,
+    details: details,
+    timestamp: timestamp,
+    timeSpentInExam: timeSpent,
+    questionIndex: currentQuestionIndex,
+    timeRemaining: timeRemaining,
+  };
+
+  windowFocusLog.push(logEntry);
+  localStorage.setItem(
+    `windowFocusLog_${examSessionId}`,
+    JSON.stringify(windowFocusLog),
+  );
+}
+
+function trackNewWindows() {
+  // Track window.open calls
+  const originalOpen = window.open;
+  window.open = function (url, name, features) {
+    const newWindow = originalOpen.call(this, url, name, features);
+
+    if (isExamActive) {
+      const tabInfo = {
+        url: url || "about:blank",
+        name: name || "unnamed",
+        features: features || "default",
+        timestamp: new Date().toISOString(),
+        method: "window.open",
+      };
+
+      openedTabs.push(tabInfo);
+      logWindowEvent("new_window_opened", `New window opened: ${url}`);
+      showNotification(`⚠️ New window detected: ${url}`, "warning");
+    }
+
+    return newWindow;
+  };
+
+  // Track links with target="_blank"
+  document.addEventListener("click", function (e) {
+    if (!isExamActive) return;
+
+    const link = e.target.closest("a");
+    if (link && link.target === "_blank") {
+      const tabInfo = {
+        url: link.href,
+        name: link.target,
+        timestamp: new Date().toISOString(),
+        method: "link_click",
+      };
+
+      openedTabs.push(tabInfo);
+      logWindowEvent("new_tab_from_link", `New tab from link: ${link.href}`);
+      showNotification(`⚠️ New tab opened from link: ${link.href}`, "warning");
+    }
+  });
+}
+
+function trackKeyboardShortcuts() {
+  document.addEventListener("keydown", function (e) {
+    if (!isExamActive) return;
+
+    // Common shortcuts that open new tabs/windows
+    const shortcuts = [
+      { keys: ["Control", "t"], action: "Ctrl+T (New Tab)" },
+      { keys: ["Control", "n"], action: "Ctrl+N (New Window)" },
+      { keys: ["Control", "Shift", "n"], action: "Ctrl+Shift+N (Incognito)" },
+      { keys: ["Control", "Shift", "t"], action: "Ctrl+Shift+T (Restore Tab)" },
+      { keys: ["Alt", "Tab"], action: "Alt+Tab (Switch App)" },
+      { keys: ["Control", "Tab"], action: "Ctrl+Tab (Switch Tab)" },
+      {
+        keys: ["Control", "Shift", "Tab"],
+        action: "Ctrl+Shift+Tab (Previous Tab)",
+      },
+    ];
+
+    for (const shortcut of shortcuts) {
+      if (isShortcutPressed(e, shortcut.keys)) {
+        logWindowEvent("keyboard_shortcut", shortcut.action);
+        showNotification(
+          `⚠️ Keyboard shortcut detected: ${shortcut.action}`,
+          "warning",
+        );
+        break;
+      }
+    }
+  });
+}
+
+function isShortcutPressed(event, keys) {
+  const pressedKeys = [];
+
+  if (event.ctrlKey || event.metaKey) pressedKeys.push("Control");
+  if (event.shiftKey) pressedKeys.push("Shift");
+  if (event.altKey) pressedKeys.push("Alt");
+  pressedKeys.push(event.key);
+
+  return keys.every((key) => pressedKeys.includes(key));
+}
+
 function showTabSwitchWarning(type) {
   let message = "";
 
   switch (type) {
     case "tab_hidden":
-      message = `⚠�� Warning: Tab switching detected! (${tabSwitchCount + 1} violations)`;
+      message = `⚠️ Warning: Tab switching detected! (${tabSwitchCount + 1} violations)`;
       break;
     case "tab_visible":
       message = `👁️ Tab focus restored. Please stay on the exam page.`;
