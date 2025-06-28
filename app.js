@@ -447,17 +447,7 @@ async function loadPDF(pdfLink) {
   } else {
     pdfCard.style.display = 'none';
   }
-}
-  const viewport = page.getViewport({ scale: 1 });
-  const scale = Math.min(containerWidth / viewport.width, 2.0); // Max scale of 2.0
 
-  const scaledViewport = page.getViewport({ scale });
-  canvas.height = scaledViewport.height;
-  canvas.width = scaledViewport.width;
-
-  await page.render({ canvasContext: context, viewport: scaledViewport })
-    .promise;
-}
 
 // Utility function for debouncing
 function debounce(func, wait) {
