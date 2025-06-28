@@ -288,12 +288,12 @@ async function loadQuestion() {
       <p>${data.question}</p>
     `;
 
-    // Handle PDF loading
+    // Handle PDF loading with error handling
     try {
       await loadPDF(data.pdf_link);
     } catch (pdfError) {
-      console.error('PDF loading error:', pdfError);
-      showNotification('PDF loading failed, but exam can continue', 'warning');
+      console.error("PDF loading error:", pdfError);
+      showNotification("PDF loading failed, but exam can continue", "warning");
     }
 
     // Handle resource links
@@ -321,26 +321,31 @@ async function loadPDF(pdfLink) {
   const pdfCard = document.getElementById("pdfCard");
   const pdfViewer = document.getElementById("pdfViewer");
 
-  if (pdfLink && (pdfLink.includes('raw.githubusercontent.com') || pdfLink.includes('drive.google.com'))) {
-    pdfCard.style.display = 'block';
-    pdfViewer.innerHTML = '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
+  if (
+    pdfLink &&
+    (pdfLink.includes("raw.githubusercontent.com") ||
+      pdfLink.includes("drive.google.com"))
+  ) {
+    pdfCard.style.display = "block";
+    pdfViewer.innerHTML =
+      '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
 
     try {
       // Use iframe to display PDF directly with error handling
-      const iframe = document.createElement('iframe');
+      const iframe = document.createElement("iframe");
       iframe.src = pdfLink;
-      iframe.width = '100%';
-      iframe.height = '600px';
-      iframe.style.border = 'none';
-      iframe.style.borderRadius = '12px';
-      iframe.title = 'Exam PDF Document';
+      iframe.width = "100%";
+      iframe.height = "600px";
+      iframe.style.border = "none";
+      iframe.style.borderRadius = "12px";
+      iframe.title = "Exam PDF Document";
 
-      iframe.onload = function() {
-        showNotification('PDF loaded successfully', 'success');
+      iframe.onload = function () {
+        console.log("PDF loaded successfully");
       };
 
-      iframe.onerror = function() {
-        console.error('PDF iframe loading failed');
+      iframe.onerror = function () {
+        console.error("PDF iframe loading failed");
         pdfViewer.innerHTML = `
           <div class="alert alert-warning d-flex align-items-center">
             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -358,17 +363,16 @@ async function loadPDF(pdfLink) {
         <div class="pdf-container">
           <div class="pdf-fallback" style="margin-bottom: 16px;">
             <p class="text-muted">If the PDF doesn't display properly below:</p>
-            <a href="${pdfLink}" target="_blank" class="btn btn-outline-primary">
+            <a href="${pdfLink}" target="_blank" class="btn btn-outline-primary btn-sm">
               <i class="fas fa-external-link-alt"></i> Open PDF in New Tab
             </a>
           </div>
         </div>
       `;
 
-      pdfViewer.querySelector('.pdf-container').appendChild(iframe);
-
+      pdfViewer.querySelector(".pdf-container").appendChild(iframe);
     } catch (error) {
-      console.error('PDF Error:', error);
+      console.error("PDF Error:", error);
       pdfViewer.innerHTML = `
         <div class="alert alert-warning d-flex align-items-center">
           <i class="fas fa-exclamation-triangle me-2"></i>
@@ -382,8 +386,6 @@ async function loadPDF(pdfLink) {
       `;
     }
   } else {
-    pdfCard.style.display = 'none';
-  }
     pdfCard.style.display = "none";
   }
 }
@@ -464,15 +466,20 @@ function finishExam() {
   document.getElementById("summaryExamId").textContent = currentExamId;
 
   // Add tab switch summary to modal
-  const tabSwitchSummary = document.createElement("div");
-  tabSwitchSummary.className = "summary-item";
-  tabSwitchSummary.innerHTML = `
-    <span class="label">Tab Switches:</span>
-    <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
-      ${tabSwitchCount} violations
-    </span>
-  `;
-  document.querySelector(".exam-summary").appendChild(tabSwitchSummary);
+  const existingSummary = document.querySelector(
+    ".exam-summary .tab-switch-summary",
+  );
+  if (!existingSummary) {
+    const tabSwitchSummary = document.createElement("div");
+    tabSwitchSummary.className = "summary-item tab-switch-summary";
+    tabSwitchSummary.innerHTML = `
+      <span class="label">Tab Switches:</span>
+      <span class="value" style="color: ${tabSwitchCount > 3 ? "var(--danger-color)" : tabSwitchCount > 0 ? "var(--warning-color)" : "var(--success-color)"}">
+        ${tabSwitchCount} violations
+      </span>
+    `;
+    document.querySelector(".exam-summary").appendChild(tabSwitchSummary);
+  }
 
   modal.show();
 }
@@ -563,22 +570,19 @@ function logTabSwitch(action) {
 
 function showTabSwitchWarning(type) {
   let message = "";
-  let icon = "fas fa-exclamation-triangle";
 
   switch (type) {
     case "tab_hidden":
-      message = `⚠️ Warning: Tab switching detected! (${tabSwitchCount + 1} violations)`;
+      message = `⚠�� Warning: Tab switching detected! (${tabSwitchCount + 1} violations)`;
       break;
     case "tab_visible":
       message = `👁️ Tab focus restored. Please stay on the exam page.`;
-      icon = "fas fa-eye";
       break;
     case "window_blur":
       message = `⚠️ Warning: Window focus lost! Stay focused on the exam.`;
       break;
     case "window_focus":
       message = `✅ Window focus restored.`;
-      icon = "fas fa-check-circle";
       break;
   }
 
@@ -589,6 +593,11 @@ function showTabSwitchWarning(type) {
 }
 
 function showSevereTabWarning() {
+  const existingModal = document.getElementById("severeWarningModal");
+  if (existingModal) {
+    existingModal.remove();
+  }
+
   const modal = document.createElement("div");
   modal.className = "modal fade show";
   modal.style.display = "block";
