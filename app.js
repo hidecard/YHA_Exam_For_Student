@@ -321,8 +321,6 @@ async function loadPDF(pdfLink) {
   const pdfCard = document.getElementById("pdfCard");
   const pdfViewer = document.getElementById("pdfViewer");
 
-  if (
-    pdfLink &&
   if (pdfLink && (pdfLink.includes('raw.githubusercontent.com') || pdfLink.includes('drive.google.com'))) {
     pdfCard.style.display = 'block';
     pdfViewer.innerHTML = '<div class="text-center"><div class="spinner"></div><p>Loading PDF...</p></div>';
